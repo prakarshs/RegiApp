@@ -69,7 +69,7 @@ public class UserRegistrationServiceIMPL implements UserRegistrationService {
         UserTokenEntity userToken = UserTokenEntity.builder()
                 .verificationToken(verificationtoken)
                 .user(user)
-                .expirationTime(Date.from(Instant.now().plusSeconds(120)))
+                .expirationTime(Date.from(Instant.now().plusSeconds(300)))
                 .build();
         log.info("SAVING USER TOKEN...");
         userTokenRepository.save(userToken);
@@ -90,6 +90,7 @@ public class UserRegistrationServiceIMPL implements UserRegistrationService {
         else{
             UserEntity user = userToken.getUser();
             user.setState(AppConstants.ACTIVE);
+            userRepository.save(user);
             return "USER WAS ACTIVATED!";
         }
     }
