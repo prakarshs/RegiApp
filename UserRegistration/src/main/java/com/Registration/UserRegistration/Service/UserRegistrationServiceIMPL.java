@@ -2,12 +2,16 @@ package com.Registration.UserRegistration.Service;
 
 import com.Registration.UserRegistration.Constants.AppConstants;
 import com.Registration.UserRegistration.Constants.ErrorConstants;
+import com.Registration.UserRegistration.Model.ResetPasswordRequest;
+import com.Registration.UserRegistration.Entity.ResetTokenEntity;
 import com.Registration.UserRegistration.Entity.UserEntity;
 import com.Registration.UserRegistration.Entity.UserTokenEntity;
 import com.Registration.UserRegistration.Errors.CustomError;
+import com.Registration.UserRegistration.Events.PasswordResetEvent;
 import com.Registration.UserRegistration.Events.UserActivationEvent;
 import com.Registration.UserRegistration.Model.MailTemplateModel;
 import com.Registration.UserRegistration.Model.UserRequest;
+import com.Registration.UserRegistration.Repository.ResetPasswordRepository;
 import com.Registration.UserRegistration.Repository.UserRepository;
 import com.Registration.UserRegistration.Repository.UserTokenRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,7 +19,6 @@ import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.ResponseEntity;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,6 +44,9 @@ public class UserRegistrationServiceIMPL implements UserRegistrationService {
 
     @Autowired
     private UserTokenRepository userTokenRepository;
+
+    @Autowired
+    private ResetPasswordRepository resetPasswordRepository;
 
     @Autowired
     private JavaMailSender javaMailSender;
@@ -117,6 +123,54 @@ public class UserRegistrationServiceIMPL implements UserRegistrationService {
         log.info("SENDING EMAIL...");
         javaMailSender.send(simpleMailMessage);
         return "Mail Sent Successfully!";
+    }
+
+    @Override
+    public String resetPassword(ResetPasswordRequest passwordRequest, HttpServletRequest request) {
+        log.info("CHECKING EMAIL IN DB...");
+        UserEntity user = userRepository.findByEmail(passwordRequest.getEmail()).orElseThrow(()->new CustomError(ErrorConstants.EMAIL_ID_DOESNT_EXIST, ErrorConstants.TRY_WITH_A_DIFFERENT_EMAIL_ID));
+        applicationEventPublisher.publishEvent(new PasswordResetEvent(user,templateUrl(request),passwordRequest.getNewPassword()));
+        return "PASSWORD RESET HAS BEEN INITIATED";
+    }
+
+    @Override
+    public String resetTokenSave(UserEntity user, String newPassword, String resetToken) {
+        log.info("CREATING RESET ENTITY TO BE SAVED...");
+        ResetTokenEntity resetTokenEntity = ResetTokenEntity.builder()
+                .resetToken(resetToken)
+                .user(user)
+                .newPassword(passwordEncoder.encode(newPassword))
+                .expirationTime(Date.from(Instant.now().plusSeconds(300)))
+                .build();
+
+        log.info("SAVING RESET ENTITY...");
+        resetPasswordRepository.save(resetTokenEntity);
+
+        return "SAVED RESET ENTITY.";
+    }
+
+    @Override
+    public String changePassword(String token) {
+        log.info("CHECKING FOR RESET-TOKEN IN DB...");
+        ResetTokenEntity tokenEntity = resetPasswordRepository.findByResetToken(token).orElseThrow(()->new CustomError(ErrorConstants.TOKEN_DOESNT_EXIST,ErrorConstants.TRY_WITH_A_DIFFERENT_TOKEN));
+        UserEntity user = tokenEntity.getUser();
+
+        log.info("CHECKING EXPIRY...");
+        if(Date.from(Instant.now()).getTime() - tokenEntity.getExpirationTime().getTime() >= 0)
+        {
+            log.info("RESET TOKEN EXPIRED.");
+            resetPasswordRepository.delete(tokenEntity);
+            return "RESET TOKEN IS EXPIRED.";
+        }
+        else{
+            log.info("CHANGING PASSWORD...");
+            user.setPassword(tokenEntity.getNewPassword());
+            resetPasswordRepository.delete(tokenEntity);
+            userRepository.save(user);
+            return "PASSWORD HAS BEEN RESET WITH THE NEW PASSWORD.";
+        }
+
+
     }
 
     private String templateUrl(HttpServletRequest request) {
