@@ -6,13 +6,18 @@ import com.Registration.UserRegistration.Entity.UserEntity;
 import com.Registration.UserRegistration.Entity.UserTokenEntity;
 import com.Registration.UserRegistration.Errors.CustomError;
 import com.Registration.UserRegistration.Events.UserActivationEvent;
+import com.Registration.UserRegistration.Model.MailTemplateModel;
 import com.Registration.UserRegistration.Model.UserRequest;
 import com.Registration.UserRegistration.Repository.UserRepository;
 import com.Registration.UserRegistration.Repository.UserTokenRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +41,9 @@ public class UserRegistrationServiceIMPL implements UserRegistrationService {
 
     @Autowired
     private UserTokenRepository userTokenRepository;
+
+    @Autowired
+    private JavaMailSender javaMailSender;
 
     @Override
     public UserEntity registerUser(UserRequest userRequest, HttpServletRequest request) {
@@ -93,6 +101,22 @@ public class UserRegistrationServiceIMPL implements UserRegistrationService {
             userRepository.save(user);
             return "USER WAS ACTIVATED!";
         }
+    }
+
+    @Value("${spring.mail.username}")
+    private String fromMail;
+    @Override
+    public String sendMail(String email, MailTemplateModel mailTemplateModel) {
+        SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
+        log.info("BUILDING EMAIL...");
+        simpleMailMessage.setFrom(fromMail);
+        simpleMailMessage.setSubject(mailTemplateModel.getSubject());
+        simpleMailMessage.setText(mailTemplateModel.getContent());
+        simpleMailMessage.setTo(email);
+
+        log.info("SENDING EMAIL...");
+        javaMailSender.send(simpleMailMessage);
+        return "Mail Sent Successfully!";
     }
 
     private String templateUrl(HttpServletRequest request) {
